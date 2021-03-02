@@ -1,26 +1,38 @@
 //示例服务器程序。
+#ifndef MRS_HPP
+#define MRS_HPP
+
 #include<stdexcept>
 #include<map>
+
 #include<cstdlib>//exit()
 #include<cassert>//assert()
 #include<cstdio>//sprintf()
 #include<cstdarg>//va_list
+#include<cstring>//memcpy()
+
 #include<pthread.h>
 #include<sys/socket.h>//socketpair()
 #include<unistd.h>//read()
 #include<netinet/in.h>//sockaddr_in
 #include<fcntl.h>//fcntl()
 #include<sys/epoll.h>//epoll()
-#include<cstring>//memcpy()
+
 template<typename DEST_TYPE, typename SOURCE_TYPE>
 DEST_TYPE pointer_cast(SOURCE_TYPE source_type){
     void* t = source_type;
-    
     return static_cast<DEST_TYPE>(t);
 }
 
 void make_noblocking(int fd){
     fcntl(fd, F_SETFL, O_NONBLOCK);
+}
+
+void log_msg(/*const char* lc,*/ const char* fmt, ...){
+    va_list ps;
+    va_start(ps, fmt);
+    vprintf(fmt, ps);
+    va_end(ps);
 }
 
 void log_err(const char* s){
@@ -38,10 +50,10 @@ class channel{
     //抽象了事件的分发
 public:
     channel(int a_fd, int a_events, event_loop* a_event_loop) :
-        fd(a_fd), events(a_events), p_event_loop(a_event_loop) {}
+        fd(a_fd), events(a_events), p_event_loop(a_event_loop)
+    {}
     
     virtual int read(){
-        printf("oread");
         return 0;
     }
 
@@ -76,17 +88,22 @@ private:
 class TCPserver_base{
 public:
     TCPserver_base(){}
+
     TCPserver_base(const TCPserver_base&) = delete;
+
     virtual ~TCPserver_base(){}
+    
     virtual void start() = 0;
+
     virtual int handle_connection_established() = 0;
+
 };
 
 class wakeup_channel : public channel{
 public:
     wakeup_channel(int a_fd, int a_events, event_loop* a_event_loop) :
         channel(a_fd, a_events, a_event_loop) {
-            printf("[wakeup channel] created fd = %d\n", a_fd);
+            log_msg("[wakeup channel] created fd = %d\n", a_fd);
         }
 
     int read() override;
@@ -99,7 +116,7 @@ class connection_channel : public channel{
 public:
     connection_channel(int a_fd, int a_events, event_loop* a_event_loop, tcp_connection* a_tcp_connection) :
         channel(a_fd, a_events,a_event_loop), p_tcp_connection(a_tcp_connection) {
-            printf("[connection channel] created fd = %d\n", a_fd);
+            log_msg("[connection channel] created fd = %d\n", a_fd);
         }
     
     ~connection_channel();
@@ -121,11 +138,11 @@ class listen_channel : public channel{
 public:
     listen_channel(int a_fd, int a_events, event_loop* a_event_loop, TCPserver_base* a_TCPserver) :
         channel(a_fd, a_events, a_event_loop), p_TCPserver(a_TCPserver){
-            printf("[listen channel] created fd = %d\n", a_fd);
+            log_msg("[listen channel] created fd = %d\n", a_fd);
         }
     
     int read() override{
-        printf("[listen channel] read\n");
+        log_msg("[listen channel] read\n");
         return p_TCPserver->handle_connection_established();
     }
 private:
@@ -134,12 +151,16 @@ private:
 
 class channel_map{
 public:
-    channel_map() : m_map{} {}
+    channel_map() : m_map{} {
+        /*
+            暂时使用map实现
+        */
+    }
 
     ~channel_map(){}
 
     int activate(int fd, int events){
-        // printf("[channel map] activate fd = %d\n", fd);
+        // log_msg("[channel map] activate fd = %d\n", fd);
         if(!m_map.count(fd))
             return 0;
         
@@ -161,7 +182,7 @@ public:
     }
 
     int insert(int fd, channel* cc){
-        //printf("[channel map] insert channel fd = %d\n", cc->get_fd());
+        //log_msg("[channel map] insert channel fd = %d\n", cc->get_fd());
         if(m_map.count(fd) && m_map[fd])
             return 0;
         m_map[fd] = cc;
@@ -221,7 +242,7 @@ public:
     }
 
     int dispatch(){
-        //printf("count: %d\n", p_channel_map->size());
+        //log_msg("count: %d\n", p_channel_map->size());
         int n = epoll_wait(efd, m_events, MAX_EVENTS, -1);
         //msg epoll_wait wakeup thread_name
 
@@ -236,12 +257,11 @@ public:
             }
 
             if(events & EPOLLIN){
-                //printf("[event dispathcer] get message channel fd = %d\n", m_events[i].data.fd);
+                //log_msg("[event dispathcer] get message channel fd = %d\n", m_events[i].data.fd);
                 p_channel_map->activate(m_events[i].data.fd, EVENT_READ);
             }
 
             if(events & EPOLLOUT){
-                //msg
                 p_channel_map->activate(m_events[i].data.fd, EVENT_WRITE);
             }
 
@@ -428,7 +448,7 @@ public:
         //msg
 
         while(!quit){
-        printf("[%s] loop\n", thread_name);
+        log_msg("[%s] loop\n", thread_name);
             //阻塞以等待I/O事件、或其他channel。
             dispatcher.dispatch();
             //处理的当前监听的事件列表。
@@ -440,7 +460,7 @@ public:
     }
 
     int add_channel_event(int fd, channel* cc){
-        //printf("[%s] add event channel fd = %d\n", thread_name, fd);
+        //log_msg("[%s] add event channel fd = %d\n", thread_name, fd);
         return do_channel_event(fd, cc, 1);
     }
 
@@ -466,6 +486,7 @@ public:
     const char* get_thread_name(){
         return thread_name;
     }
+
 private:
     int handle_pending_channel(){
         /*
@@ -510,7 +531,7 @@ private:
 
     void channel_buffer_nolock(int fd, channel* cc, int type){
         channel_element* ce = new channel_element(cc, type);
-        //printf("[%s] struct insert channel fd = %d\n", thread_name, fd);
+        //log_msg("[%s] struct insert channel fd = %d\n", thread_name, fd);
         if(!pending_front)
             pending_front = pending_back = ce;
         else{
@@ -524,12 +545,12 @@ private:
             主线程往子线程的数据中增加需要处理的channel event对象，所增加的channel
             对象以链表的形式维护在子线程的数据结构中。
         */
-        //printf("[%s] do channel event channel fd = %d\n", thread_name, cc->get_fd());
+        //log_msg("[%s] do channel event channel fd = %d\n", thread_name, cc->get_fd());
         //上锁
         pthread_mutex_lock(&mutex);
 
         assert(!is_handle_pending);
-        //printf("[%s] ready to add channel fd = %d\n", thread_name, cc->get_fd());
+        //log_msg("[%s] ready to add channel fd = %d\n", thread_name, cc->get_fd());
         //向该线程的channel列表中增加新的channel
         channel_buffer_nolock(fd, cc, type);
 
@@ -593,7 +614,7 @@ private:
     }
     
     int wakeup(){
-        printf("[%s] wakeup\n", thread_name);
+        log_msg("[%s] wakeup\n", thread_name);
         char a = 'a';
         ssize_t n = write(socket_pair[0], &a, sizeof(a));
 
@@ -640,7 +661,7 @@ void channel::set_write_event_enable(bool enable){
 
 int wakeup_channel::read(){
     //读取一个字符，作用是让子线程从dispatch的阻塞中苏醒。
-    printf("[wakeup channel] wakeup\n");
+    log_msg("[wakeup channel] wakeup\n");
     char c;
     ssize_t n = ::read(get_event_loop()->get_second_socket_fd(), &c, sizeof(c));
     if(n != sizeof(c))
@@ -692,7 +713,7 @@ public:
         
         assert(!pthread_mutex_unlock(&mutex));
         
-        printf("[event loop thread] started, %s\n", thread_name);
+        log_msg("[event loop thread] started, %s\n", thread_name);
 
         return m_event_loop;
     }
@@ -708,7 +729,7 @@ public:
 
         m_event_loop = new event_loop(thread_name);
         
-        printf("[event loop thread] init and signal %s\n", thread_name);
+        log_msg("[event loop thread] init and signal %s\n", thread_name);
 
         pthread_cond_signal(&cond);
 
@@ -983,7 +1004,7 @@ public:
     
     void shutdown_connection(){
         if(shutdown(m_channel->get_fd(), SHUT_WR) < 0)
-            printf("[tcp connection] shutdown failed, socket == %d\n", m_channel->get_fd());
+            log_msg("[tcp connection] shutdown failed, socket == %d\n", m_channel->get_fd());
     }
 protected:
     event_loop* p_event_loop;
@@ -1001,7 +1022,7 @@ int buffer::send(tcp_connection* t){
 }
 
 connection_channel::~connection_channel(){
-    printf("connect_channel destruction\n");
+    log_msg("connect_channel destruction\n");
     delete p_tcp_connection;
 }
 
@@ -1012,45 +1033,46 @@ int connection_channel::read(){
     if(!p)
         return 1;
 
-    printf("[connect channel] read %d bytes\n%s\n", p, buf.get_readable_data());
+    log_msg("[connect channel] read %d bytes\n%s\n", p, buf.get_readable_data());
     p_tcp_connection->message(&buf);
-    //printf("[connect channel] readend\n");
+    //log_msg("[connect channel] readend\n");
     return 0;
 }
 
 template<typename Connection_Type>
 class TCPserver : public TCPserver_base{
 public:
-    TCPserver(event_loop* a_event_loop,
-        acceptor* a_acceptor,
-        int a_thread_num ) :
-        main_event_loop(a_event_loop),
-        p_acceptor(a_acceptor),
+    TCPserver(int port, int a_thread_num ) :
+        main_event_loop{},
+        m_acceptor(port),
         thread_num(a_thread_num),
-        m_thread_pool(new thread_pool(main_event_loop, thread_num)) {}
+        m_thread_pool(&main_event_loop, thread_num)
+    {}
+    
     ~TCPserver(){
-        delete m_thread_pool;
     }
+    
     void start() override{
         /*
             开启监听。
         */
         //开启多个线程
-        m_thread_pool->start();
+        m_thread_pool.start();
 
-        int listen_fd = p_acceptor->get_listen_fd();
+        int listen_fd = m_acceptor.get_listen_fd();
 
-        channel* cc = new listen_channel(listen_fd, EVENT_READ, main_event_loop, this);
+        channel* cc = new listen_channel(listen_fd, EVENT_READ, &main_event_loop, this);
 
-        main_event_loop->add_channel_event(listen_fd, cc);
+        main_event_loop.add_channel_event(listen_fd, cc);
 
         return;
     }
+
     int handle_connection_established() override{
         /*
             当出现了新的连接，主线程需要调用该函数。
         */
-        int listen_fd = p_acceptor->get_listen_fd();
+        int listen_fd = m_acceptor.get_listen_fd();
 
         sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
@@ -1064,20 +1086,22 @@ public:
 
         //从线程池中选择一个event_loop来服务这个新的连接套接字，
         //并为其创建一个tcp_connection对象
-        tcp_connection* connection = new Connection_Type(connect_fd, m_thread_pool->get_event_loop());
+        tcp_connection* connection = new Connection_Type(connect_fd, m_thread_pool.get_event_loop());
         
-        
-        //...data
 
         return 0;
     }
+
+    int run(){
+        return main_event_loop.run();
+    }
 private:
     int port;
-    event_loop* main_event_loop;
-    acceptor* p_acceptor;
+    event_loop main_event_loop;
+    acceptor m_acceptor;
 
     int thread_num;
-    thread_pool* m_thread_pool;
+    thread_pool m_thread_pool;
 };
 
 ////my_tcp_connection
@@ -1086,11 +1110,11 @@ public:
     using tcp_connection::tcp_connection;
 
     ~my_tcp_connection(){
-        printf("connection closed\n");
+        log_msg("connection closed\n");
     }
 
     int message(buffer* input) override{
-        printf("get %d bytes from %s : %s\n", input->get_readable_size(), name, input->get_readable_data());
+        log_msg("get %d bytes from %s : %s\n", input->get_readable_size(), name, input->get_readable_data());
 
         buffer output;
         int size = input->get_readable_size();
@@ -1105,7 +1129,7 @@ public:
     }
 
     int write_completed() override{
-        printf("write completed\n");
+        log_msg("write completed\n");
         return 0;
     }
 };
@@ -1131,6 +1155,7 @@ public:
         version(nullptr),
         method(nullptr),
         url(nullptr),
+        path(nullptr),
         current_state(REQUEST_STATUS),
         request_headers(new request_header[INIT_REQUEST_HEADER_SIZE]),
         request_headers_number(0)
@@ -1144,6 +1169,11 @@ public:
             }
             delete request_headers;
         }
+        delete path;
+        delete url;
+        delete method;
+        delete version;
+
     }
 
     void reset(){
@@ -1158,6 +1188,10 @@ public:
         if(url){
             delete[] url;
             url = nullptr;
+        }
+        if(path){
+            delete[] path;
+            path = nullptr;
         }
         current_state = REQUEST_STATUS;
         request_headers_number = 0;
@@ -1267,17 +1301,31 @@ public:
                 }
             }
         }
-        printf("[ok] %d\n", ok);
         return ok;
     }
 
     char* get_url(){
         return url;
     }
+
+    char* get_path(){
+        if(path)
+            return path;
+        
+        char* query = pointer_cast<char*>(memmem(url, strlen(url), "?", 1));
+        int path_length = query ? query - url : strlen(url);
+
+        path = new char[path_length + 1];
+        strncpy(path, url, path_length);
+        path[path_length] = '\0';
+        return path;
+    }
+
 private:
     char* version;
     char* method;
     char* url;
+    char* path;
     http_request_state current_state;
     struct request_header{
         char* key;
@@ -1331,7 +1379,7 @@ public:
         else{
             snprintf(buf, sizeof(buf), "Content-Length: %zd\r\n", strlen(body));
             output->append_string(buf);
-            output->append_string("Connection: Keep-Alive\r\n");
+            output->append_string("Connection: Keep-alive\r\n");
         }
 
         if(response_headers && response_headers_number > 0){
@@ -1370,7 +1418,7 @@ public:
     {}
 
     int message(buffer* buf)override {
-        printf("[http connection] get message from tcp connection %s\n", name);
+        log_msg("[http connection] get message from tcp connection %s\n", name);
         if(m_http_request.parse_http_request(buf) == 0){
             char* error_response = "HTTP/1.1 400 Bad Request\r\n\r\n";
             send_data(error_response, sizeof(error_response));
@@ -1385,7 +1433,7 @@ public:
             buffer t_buffer;
             
             response.encode_buffer(&t_buffer);
-            printf("[response] encode\n%s\n", t_buffer.get_readable_data());
+            log_msg("[response] encode\n%s\n", t_buffer.get_readable_data());
             t_buffer.send(this);
 
             if(m_http_request.close_connection())
@@ -1398,7 +1446,7 @@ public:
 
     ~http_connection(){
         //
-        
+        log_msg("[http connection] destructed\n");
     }
     
     int write_completed(){
@@ -1408,3 +1456,5 @@ public:
 private:
     http_request m_http_request;
 };
+
+#endif
