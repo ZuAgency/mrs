@@ -16,6 +16,7 @@
 #include<netinet/in.h>//sockaddr_in
 #include<fcntl.h>//fcntl()
 #include<sys/epoll.h>//epoll()
+#include<sys/stat.h>//stat()
 
 template<typename DEST_TYPE, typename SOURCE_TYPE>
 DEST_TYPE pointer_cast(SOURCE_TYPE source_type){
