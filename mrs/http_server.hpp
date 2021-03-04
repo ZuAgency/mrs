@@ -115,14 +115,8 @@ public:
             if(current_state == REQUEST_STATUS){
                 char* crlf = input->find_CRLF();
                 if(crlf){
-                    int request_line_size;
-                    try{
-                        request_line_size = process_status_line(input->get_readable_data(), crlf);
-                    }catch(const std::bad_alloc& e){
-                        printf("process[]\n");
-                        throw;
-                    }
-                    if(request_line_size){
+                    int request_line_size = process_status_line(input->get_readable_data(), crlf);
+                   if(request_line_size){
                         input->move_read_position_by(request_line_size + 2);
                         //               request line     crlf
                         current_state = REQUEST_HEADERS;
@@ -295,15 +289,10 @@ public:
 
     int message(buffer* buf)override {
         log_msg("[http connection] get message from tcp connection %s\n", name);
-        try{
         if(m_http_request.parse_http_request(buf) == 0){
             char* error_response = "HTTP/1.1 400 Bad Request\r\n\r\n";
             send_data(error_response, sizeof(error_response));
             shutdown_connection();
-        }
-        }catch(const std::bad_alloc&){
-            log_msg("prase\n");
-            throw;
         }
 
         if(m_http_request.get_current_state() == REQUEST_DONE){
