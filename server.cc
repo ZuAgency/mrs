@@ -32,9 +32,7 @@ public:
 
 class a_http_response : public http_response{
 public:
-    a_http_response() :
-        buf{}
-    {}
+    a_http_response() {}
 
     ~a_http_response(){
         
@@ -68,26 +66,27 @@ public:
 
             char s[10001];
             int nread;
-
+            
+            body.clear();
             while((nread = read(fd, s, 10000)) > 0){
                 log_msg("[read file] %d bytes\n", nread);
                 s[nread] = 0;
-                buf.append_string(s);
+                body.append(s, nread);
             }
 
-            body = buf.get_readable_data();
+            //body = buf.get_readable_data();
         }
         else{
             status = not_found;
             status_message = "Not Found";
             content_type = "text/html";
-            body = 
+            body.append_string(
             "<html><head>"
             "<title>404 Not Found</title>"
             "</head><body>"
             "<h1>Not Found</h1>"
             "<p>The requested URL was not found on this server.</p>"
-            "</body></html>";
+            "</body></html>");
 
             // keep_connected = 1;
         }
@@ -104,8 +103,7 @@ private:
         
         return st.st_mode & S_IFREG;
     
-}
-    buffer buf;
+    }
 };
 
 int main(){

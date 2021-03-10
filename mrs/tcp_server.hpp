@@ -131,7 +131,7 @@ public:
         assert(fd == cc->get_fd());
 
         if(events & EVENT_READ){
-            if(cc->read()){
+            if(cc->read()){//返回值不为0则出错
                 close(fd);
                 log_msg("[channel map] fd == %d, closed\n", fd);
                 //m_map[fd] = nullptr;
@@ -822,7 +822,7 @@ public:
 
     }
 
-    int append(void* a_data, int size){
+    int append(const void* a_data, int size){
         if(a_data){
             make_room(size);
             memcpy(data + write_position, a_data, size);
@@ -837,7 +837,7 @@ public:
         return {};
     }
 
-    int append_string(char* s){
+    int append_string(const char* s){
         if(s){
             int size = strlen(s);
             append(s, size);

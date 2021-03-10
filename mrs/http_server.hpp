@@ -227,7 +227,7 @@ public:
         status(unknown),
         status_message(nullptr),
         content_type(nullptr),
-        body(nullptr),
+        body{},
         response_headers(new response_header[INIT_RESPONSE_HEADER_SIZE]),
         response_headers_number(0),
         keep_connected(0)
@@ -247,7 +247,7 @@ public:
         if(keep_connected)
             output->append_string("Connection: close\r\n");
         else{
-            snprintf(buf, sizeof(buf), "Content-Length: %zd\r\n", strlen(body));
+            snprintf(buf, sizeof(buf), "Content-Length: %zd\r\n", body.get_readable_size());
             output->append_string(buf);
             output->append_string("Connection: Keep-alive\r\n");
         }
@@ -262,7 +262,7 @@ public:
         }
 
         output->append_string("\r\n");
-        output->append_string(body);
+        output->append(body.get_readable_data(), body.get_readable_size());
     }
 
     virtual int request(http_request* a_http_request){
@@ -273,7 +273,7 @@ protected:
     http_statuscode status;
     char* status_message;
     char* content_type;
-    char* body;
+    buffer body;
     response_header* response_headers;
     int response_headers_number;
     int keep_connected;
