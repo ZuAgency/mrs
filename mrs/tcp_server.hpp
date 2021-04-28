@@ -137,6 +137,7 @@ public:
                 //m_map[fd] = nullptr;
                 remove(fd);
                 delete cc;
+                log_msg("[channel map] now sockets = %d\n", m_map.size());
                 return 0;
             }
         }
@@ -572,7 +573,7 @@ private:
     }
     
     bool is_in_same_thread(){
-        return owner_thread_id =pthread_self();
+        return owner_thread_id == pthread_self();
     }
     
     int wakeup(){
@@ -641,7 +642,10 @@ public:
         cond{},
         thread{},
         thread_name{}
-    {}
+    {
+        pthread_mutex_init(&mutex, nullptr);
+        pthread_cond_init(&cond, nullptr);
+    }
     
     ~event_loop_thread(){
         delete[] thread_name;
@@ -1065,7 +1069,6 @@ public:
         return main_event_loop.run();
     }
 private:
-    int port;
     event_loop main_event_loop;
     acceptor m_acceptor;
 
