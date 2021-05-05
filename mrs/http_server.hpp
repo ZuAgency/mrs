@@ -3,6 +3,7 @@
 
 #include"common.hpp"
 #include"tcp_server.hpp"
+#include"picohttpparser.h"
 
 //http-request
 const int INIT_REQUEST_HEADER_SIZE = 128;
@@ -11,13 +12,6 @@ const char* HTTP11 = "HTTP/1.1";
 const char* KEEP_ALIVE = "Keep-Alive";
 const char* CLOSE = "close";
 
-enum http_request_state{
-    REQUEST_STATUS,
-    REQUEST_HEADERS,
-    REQUEST_BODY,
-    REQUEST_DONE
-};
-
 class http_request{
 public:
     http_request() :
@@ -25,30 +19,23 @@ public:
         method(nullptr),
         url(nullptr),
         path(nullptr),
-        current_state(REQUEST_STATUS),
+        current_state(0),
         request_headers(new request_header[INIT_REQUEST_HEADER_SIZE]),
         request_headers_number(0)
     {}
 
     ~http_request(){
+        clear_free_space();
+
         if(request_headers){
-            for(int i{}; i!=request_headers_number; ++i){
-                delete[] request_headers[i].key;
-                delete[] request_headers[i].value;
-            }
             delete[] request_headers;
         }
-        clear_free_space();
     }
 
     void reset(){
         clear_free_space();
-        current_state = REQUEST_STATUS;
+        current_state = 0;
         request_headers_number = 0;
-    }
-
-    void add_header(char* key, char* value){
-        request_headers[request_headers_number++] = {key, value};
     }
 
     char* get_header(char* key){
@@ -60,7 +47,7 @@ public:
         return nullptr;
     }
 
-    http_request_state get_current_state(){
+    int is_parsed(){
         return current_state;
     }
 
@@ -77,83 +64,73 @@ public:
         return 0;
     }
 
-    int process_status_line(char* start, char* end){
-        clear_free_space();
-        int size = end -start;
-        //method
-        log_msg("[process]");
-        char* space = pointer_cast<char*>(memmem(start, size, " ", 1));
-        assert(space != nullptr);
-        int method_size = space - start;
-        method = new char[method_size + 1];
-        strncpy(method, start, method_size);
-        method[method_size] = '\0';
-
-        //url
-        start = space + 1;
-        space = pointer_cast<char*>(memmem(start, end - start, " ", 1));
-        assert(space != nullptr);
-        int url_size = space - start;
-        url = new char[url_size + 1];
-        strncpy(url, start, space - start);
-        url[url_size] = '\0';
-
-        //version
-        start = space + 1;
-        int version_size = end - start;
-        version = new char[version_size + 1];
-        strncpy(version, start, version_size);
-        version[version_size] = '\0';
-        assert(space != nullptr);
-
-        return size;
-    }
-
     int parse_http_request(buffer* input){
-        int ok = 1;
-        while(current_state != REQUEST_DONE){
-            if(current_state == REQUEST_STATUS){
-                char* crlf = input->find_CRLF();
-                if(crlf){
-                    int request_line_size = process_status_line(input->get_readable_data(), crlf);
-                   if(request_line_size){
-                        input->move_read_position_by(request_line_size + 2);
-                        //               request line     crlf
-                        current_state = REQUEST_HEADERS;
-                    }
-                }
+ 
+        const char *parsed_method, *parsed_path;
+        int pret, minor_version;
+        struct phr_header headers[INIT_REQUEST_HEADER_SIZE];
+        size_t buflen = input->get_readable_size() + 1;
+        size_t pbuflen = 0, method_len, path_len, num_headers = INIT_REQUEST_HEADER_SIZE;
+
+        //printf("prase----VVVV\n");
+        //printf("%s<<\n", input->get_readable_data());
+        pret = phr_parse_request(input->get_readable_data(), buflen, &parsed_method, &method_len, &parsed_path, 
+                                &path_len, &minor_version, headers, &num_headers, pbuflen);
+
+        if(pret <= 0){
+            if(pret == -1){
+                //printf("parser error\n");
+                return 0;
             }
-            else if(current_state == REQUEST_HEADERS){
-                char* crlf = input->find_CRLF();
-                if(crlf){
-                    char* start = input->get_readable_data();
-                    int request_line_size = crlf - start;
-                    char* colon = pointer_cast<char*>(memmem(start, request_line_size, ": ", 2));
-
-                    if(colon != nullptr){
-                        int key_size = colon - start;
-                        char* key = new char[key_size + 1];
-                        strncpy(key, start, key_size);
-                        key[key_size] = '\0';
-                        
-                        int value_size = crlf - colon - 2;
-                        char* value = new char[value_size + 1];
-                        strncpy(value, colon + 2, value_size);
-                        value[value_size] = '\0';
-
-                        add_header(key, value);
-
-                        input->move_read_position_by(request_line_size + 2);
-                    }
-                    else{
-                        //没找到
-                        input->move_read_position_by(2);
-                        current_state = REQUEST_DONE;
-                    }
-                }
+            assert(pret == -2);
+            if(buflen == sizeof(buffer)){
+                //printf("request is too long error\n");
+                return -1;
             }
         }
-        return ok;
+        // printf("method: %.*s\n", (int)method_len, parsed_method);
+        // printf("path: %.*s\n", (int)path_len, parsed_path);
+        // printf("HTTP version: 1.%d\n", minor_version);
+        // printf("headers: %d\n", num_headers);
+
+        current_state = 1;
+
+        clear_free_space();
+        
+        //version
+        version = new char[9];
+        strncpy(version, "HTTP/1.1", 9);
+        version[7] = minor_version + '0';
+
+        //method
+        method = new char[method_len + 1];
+        strncpy(method, parsed_method, method_len);
+        method[method_len] = '\0';
+
+        //url
+        url = new char[path_len + 1];
+        strncpy(url, parsed_path, path_len);
+        url[path_len] = '\0';
+
+        //headers
+        request_headers_number = num_headers;
+        for(int i = 0; i != num_headers; ++i){
+            //key
+            auto key_size = headers[i].name_len;
+            char* key = new char[ key_size + 1];
+            strncpy(key, headers[i].name, key_size);
+            key[key_size] = '\0';
+            request_headers[i].key = key;
+
+            //value
+            auto value_size = headers[i].value_len;
+            char* value = new char[value_size + 1];
+            strncpy(value, headers[i].value, value_size);
+            value[value_size] = '\0';
+            request_headers[i].value = value;
+        }
+        
+        return 1;
     }
 
     char* get_url(){
@@ -170,6 +147,7 @@ public:
         path = new char[path_length + 1];
         strncpy(path, url, path_length);
         path[path_length] = '\0';
+
         return path;
     }
 
@@ -191,12 +169,17 @@ private:
             delete[] path;
             path = nullptr;
         }
+        
+        for(int i = 0; i < request_headers_number; ++i){
+            delete[] request_headers[i].key;
+            delete[] request_headers[i].value;
+        }
     }
     char* version;
     char* method;
     char* url;
     char* path;
-    http_request_state current_state;
+    int current_state;
     struct request_header{
         char* key;
         char* value;
@@ -295,7 +278,7 @@ public:
             shutdown_connection();
         }
 
-        if(m_http_request.get_current_state() == REQUEST_DONE){
+        if(m_http_request.is_parsed() == 1){
             RESPONSE response;
 
             response.request(&m_http_request);
@@ -303,7 +286,7 @@ public:
             buffer t_buffer;
             
             response.encode_buffer(&t_buffer);
-            // log_msg("[response] encode\n%s\n", t_buffer.get_readable_data());
+            //log_msg("[response] encode\n%.*s\n",t_buffer.get_readable_size(), t_buffer.get_readable_data());
             t_buffer.send(this);
 
             if(m_http_request.close_connection())
@@ -316,7 +299,7 @@ public:
 
     ~http_connection(){
         //
-        log_msg("[http connection] destructed\n");
+        //log_msg("[http connection] destructed\n");
     }
     
     int write_completed(){
