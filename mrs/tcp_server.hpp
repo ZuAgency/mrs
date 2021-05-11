@@ -773,7 +773,8 @@ private:
     int position;//表示在数组里的位置，用来决定选择哪个event_loop_thread服务
 };
 
-const int INIT_BUFFER_SIZE = 1048576;//65536;
+// const int INIT_BUFFER_SIZE = 1048576;
+const int INIT_BUFFER_SIZE = 65536;
 
 class buffer{
 public:
@@ -800,30 +801,8 @@ public:
         return read_position;
     }
 
-    void make_room(int size){
-        if(get_writeable_size() >= size)
-            return;
-        
-        if(get_front_spare_size() + get_writeable_size() >= size){
-            int readable = get_readable_size();
-            
-            // if(read_position > readable)
-            //     memcpy(data, data + read_position, readable);
-            // else
-                for(int i{}; i!= readable; ++i)
-                    memcpy(data + i, data + read_position + i, i);
-                    
-            read_position = 0;
-            write_position = readable;
-        }
-        else{
-            char* new_pos = new char[total_size + size + 1];
-            memcpy(new_pos, data, sizeof(data));
-            delete data;
-            data = new_pos;
-            total_size += size;
-        }
-
+    char* get_readable_data(){
+        return data + read_position;
     }
 
     int append(const void* a_data, int size){
@@ -835,12 +814,6 @@ public:
         return {};
     }
 
-    int append_char(char c){
-        make_room(1);
-        data[write_position++] = c;
-        return {};
-    }
-
     int append_string(const char* s){
         if(s){
             int size = strlen(s);
@@ -848,6 +821,18 @@ public:
         }
         return {};
     }
+
+    int append_char(char c){
+        make_room(1);
+        data[write_position++] = c;
+        return {};
+    }
+
+     char read_char(){
+        char c = data[read_position];
+        ++read_position;
+        return c;
+    }  
 
     int socket_read(int fd){
         char add_buf[INIT_BUFFER_SIZE];
@@ -873,24 +858,11 @@ public:
 
     }
 
-    char read_char(){
-        char c = data[read_position];
-        ++read_position;
-        return c;
-    }
-
     char* find_CRLF(){
         void* crlf = memmem(data + read_position, get_readable_size(), "\r\n", 2);
         return pointer_cast<char*>(crlf);
     }
 
-    char* get_readable_data(){
-        return data + read_position;
-    }
-    //读取位置向后移动指定位
-    void move_read_position_by(int s){
-        read_position += s;
-    }
     int send(tcp_connection* t);
 
     void clear(){
@@ -901,7 +873,36 @@ public:
     auto capacity(){
         return total_size;
     }
+
 private:
+    void make_room(int size){
+        if(get_writeable_size() >= size)
+            return;
+        
+        int readable_size = get_readable_size();
+        if(get_front_spare_size() + get_writeable_size() >= size){//当前空余空间足够
+            
+            // if(read_position > readable_size)
+            //     memcpy(data, data + read_position, readable_size);
+            // else
+            for(int i{}; i!= readable_size; ++i)
+                memcpy(data + i, data + read_position + i, i);
+             
+        }
+        else{
+            char* new_space = new char[total_size + size + 1];
+            memcpy(new_space, data + read_position, readable_size);
+            delete data;
+
+            data = new_space;
+            total_size += size;
+        }
+
+        read_position = 0;
+        write_position = readable_size;
+
+    }
+
     char* data;
     int read_position;  //读取位置
     int write_position; //写入位置
