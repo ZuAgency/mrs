@@ -773,7 +773,7 @@ private:
     int position;//表示在数组里的位置，用来决定选择哪个event_loop_thread服务
 };
 
-const int INIT_BUFFER_SIZE = 65536;
+const int INIT_BUFFER_SIZE = 1048576;//65536;
 
 class buffer{
 public:
@@ -897,7 +897,10 @@ public:
         read_position = 0;
         write_position = 0;
     }
-
+    
+    auto capacity(){
+        return total_size;
+    }
 private:
     char* data;
     int read_position;  //读取位置
@@ -946,7 +949,7 @@ public:
         return 0;
     }
 
-    int send_data(void* data, int size){
+    int send_data(const void* data, int size){
         size_t nwrited{},
             nleft(size),
             fault{};
@@ -965,7 +968,7 @@ public:
         }
 
         if(!fault && nleft > 0){
-            output_buffer->append(pointer_cast<char*>(data) + nwrited, nleft);
+            output_buffer->append(const_pointer_cast<char*>(data) + nwrited, nleft);
             if(!m_channel->get_write_event())
                 m_channel->set_write_event_enable(1);
         }

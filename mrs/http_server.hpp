@@ -38,7 +38,7 @@ public:
         request_headers_number = 0;
     }
 
-    char* get_header(char* key){
+    const char* get_header(const char* key){
         if(request_headers){
             for(int i{}; i != request_headers_number; ++i)
                 if(strncmp(request_headers[i].key, key, strlen(key)) == 0)
@@ -52,7 +52,7 @@ public:
     }
 
     int close_connection(){
-        char* connection = get_header("Connection");
+        const char* connection = get_header("Connection");
 
         if(connection && strncmp(connection, CLOSE, strlen(CLOSE)) == 0)
             return 1;
@@ -226,12 +226,18 @@ public:
         output->append_string(buf);
         output->append_string(status_message);
         output->append_string("\r\n");
-
+        //printf("[encoding] %s", output->get_readable_data());
         if(keep_connected)
             output->append_string("Connection: close\r\n");
         else{
             snprintf(buf, sizeof(buf), "Content-Length: %zd\r\n", body.get_readable_size());
             output->append_string(buf);
+            
+            //snprintf(buf, sizeof(buf), "Content-Type: %s\r\n", content_type);
+            output->append_string("Content-Type: ");
+            output->append_string(content_type);
+            output->append_string("\r\n");
+
             output->append_string("Connection: Keep-alive\r\n");
         }
 
@@ -243,10 +249,23 @@ public:
                 output->append_string("\r\n");
             }
         }
+        //printf("[encoded] %s", output->get_readable_data());
 
         output->append_string("\r\n");
         output->append(body.get_readable_data(), body.get_readable_size());
-    }
+        
+        if(strcmp(content_type, "uimage/jpeg") == 0){
+            printf("[data]\n");
+            for(int i = 0; i != body.get_readable_size(); ++i){
+                if(i % 10000 == 0)
+                    printf("\nsum == %d\n", i);
+                unsigned char uc = body.get_readable_data()[i];
+                printf("%x ", uc);
+            }
+            printf("\nencode data sum = %d\n", body.get_readable_size());
+            printf("\n\n");
+        }
+   }
 
     virtual int request(http_request* a_http_request){
         return 0;
@@ -254,8 +273,8 @@ public:
 
 protected:
     http_statuscode status;
-    char* status_message;
-    char* content_type;
+    const char* status_message;
+    const char* content_type;
     buffer body;
     response_header* response_headers;
     int response_headers_number;
@@ -273,7 +292,7 @@ public:
     int message(buffer* buf)override {
         log_msg("[http connection] get message from tcp connection %s\n", name);
         if(m_http_request.parse_http_request(buf) == 0){
-            char* error_response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+            const char* error_response = "HTTP/1.1 400 Bad Request\r\n\r\n";
             send_data(error_response, sizeof(error_response));
             shutdown_connection();
         }
@@ -286,7 +305,7 @@ public:
             buffer t_buffer;
             
             response.encode_buffer(&t_buffer);
-            //log_msg("[response] encode\n%.*s\n",t_buffer.get_readable_size(), t_buffer.get_readable_data());
+            //log_msg("[response] encode\n%.*s\n", 500 /*t_buffer.get_readable_size()*/, t_buffer.get_readable_data());
             t_buffer.send(this);
 
             if(m_http_request.close_connection())
