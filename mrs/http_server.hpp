@@ -233,7 +233,6 @@ public:
             snprintf(buf, sizeof(buf), "Content-Length: %zd\r\n", body.get_readable_size());
             output->append_string(buf);
             
-            //snprintf(buf, sizeof(buf), "Content-Type: %s\r\n", content_type);
             output->append_string("Content-Type: ");
             output->append_string(content_type);
             output->append_string("\r\n");
@@ -249,22 +248,10 @@ public:
                 output->append_string("\r\n");
             }
         }
-        //printf("[encoded] %s", output->get_readable_data());
 
         output->append_string("\r\n");
         output->append(body.get_readable_data(), body.get_readable_size());
         
-        if(strcmp(content_type, "uimage/jpeg") == 0){
-            printf("[data]\n");
-            for(int i = 0; i != body.get_readable_size(); ++i){
-                if(i % 10000 == 0)
-                    printf("\nsum == %d\n", i);
-                unsigned char uc = body.get_readable_data()[i];
-                printf("%x ", uc);
-            }
-            printf("\nencode data sum = %d\n", body.get_readable_size());
-            printf("\n\n");
-        }
    }
 
     virtual int request(http_request* a_http_request){
@@ -290,7 +277,7 @@ public:
     {}
 
     int message(buffer* buf)override {
-        log_msg("[http connection] get message from tcp connection %s\n", name);
+        //log_msg("[http connection] get message from tcp connection %s\n", name);
         if(m_http_request.parse_http_request(buf) == 0){
             const char* error_response = "HTTP/1.1 400 Bad Request\r\n\r\n";
             send_data(error_response, sizeof(error_response));

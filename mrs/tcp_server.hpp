@@ -993,7 +993,7 @@ int buffer::send(tcp_connection* t){
     int size = get_readable_size();
     int result = t->send_data(data + read_position, size);
     read_position += size;
-    log_msg("[connection] send %d bytes, now buffer size is %d bytes\n", size, total_size);
+    //log_msg("[connection] send %d bytes, now buffer size is %d bytes\n", size, total_size);
     return result;
 }
 

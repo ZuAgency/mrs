@@ -66,42 +66,16 @@ public:
             const char* ext = get_extension(u);
             content_type = get_content_type(ext);
             
-            printf("[response] extension: %s, content_type: %s, opened: %d\n", ext, content_type, fd);
-
             char s[10001];
             int nread;
             int sumread = 0;
             body.clear();
             while((nread = read(fd, s, 10000)) > 0){
-                //log_msg("[read file] %d bytes\n", nread);
-                const char* cm = ".jpg";
-                int prin = 1;// strncmp(ext, cm, sizeof(cm));
-                if(prin == 0){
-                    for(int i = 0;i != nread; ++i){
-                        unsigned char uc = s[i];
-                        printf("%x ", uc);
-                    }
-                    printf("\n\n");
-                }
-
                 sumread += nread;
                 s[nread] = 0;
                 body.append(s, nread);
 
-                if(0){
-                    printf("sum read = %d, space = %d\n\n", sumread, body.capacity());
-                    
-                    char* wp = body.get_readable_data() + body.get_readable_size();
-                    auto rp = wp - nread;
-                    while(rp < wp){
-                        unsigned char u = *rp;
-                        printf("%x ", u);
-                        ++rp;
-                    }
-                    printf("\n--\n");
-                }
             }
-
         }
         else{
             status = not_found;
