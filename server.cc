@@ -1,5 +1,5 @@
-#include"mrs.hpp"
-#include"mrs/content_type.hpp"
+#include"mrs.h"
+#include"mrs/content_type.h"
 
 class my_tcp_connection : public tcp_connection{
 public:
